@@ -1,0 +1,20 @@
+{% extends "layout.html" %}
+{% block title %}避難場所空き情報{% endblock %}
+
+{% block content %}
+<div class="p-4 md:p-8 max-w-2xl mx-auto">
+    <h2 class="text-2xl font-bold mb-4">避難場所空き情報</h2>
+    <div class="bg-white p-6 rounded-xl shadow-lg">
+        <ul class="list-disc pl-5 text-gray-700 space-y-2">
+            {% for shelter in shelters %}
+            <li>
+                {{ shelter.name }}: <span class="{{ shelter.status_color }} font-bold">{{ shelter.status }}</span>
+            </li>
+            {% else %}
+            <li>情報がありません。</li>
+            {% endfor %}
+        </ul>
+        <a href="{{ url_for('emergency_info') }}" class="mt-6 block text-center text-blue-600 hover:underline">← 緊急情報トップに戻る</a>
+    </div>
+</div>
+{% endblock %}

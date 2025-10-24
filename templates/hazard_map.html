@@ -1,0 +1,14 @@
+{% extends "layout.html" %}
+{% block title %}ハザードマップ{% endblock %}
+
+{% block content %}
+<div class="p-4 md:p-8 max-w-2xl mx-auto">
+    <h2 class="text-2xl font-bold mb-4">ハザードマップダウンロード</h2>
+    <div class="bg-white p-6 rounded-xl shadow-lg text-center">
+        <a href="#" class="w-full block bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition-colors font-semibold">
+            〇〇市ハザードマップ(PDF)をダウンロード
+        </a>
+        <a href="{{ url_for('emergency_info') }}" class="mt-6 block text-center text-blue-600 hover:underline">← 緊急情報トップに戻る</a>
+    </div>
+</div>
+{% endblock %}

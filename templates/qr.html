@@ -1,0 +1,102 @@
+{% extends "layout.html" %}
+
+{% block title %}QRコード機能{% endblock %}
+
+{% block content %}
+<div class="w-full max-w-md mx-auto">
+
+    <div class="bg-white p-6 rounded-xl shadow-lg mb-6 text-center">
+        <h3 class="text-lg font-semibold mb-4">QRコード表示 (個人/グループID)</h3>
+        <div class="bg-gray-200 w-48 h-48 mx-auto rounded-lg flex items-center justify-center border-4 border-gray-300">
+            <span class="text-gray-500">QRコード画像</span>
+        </div>
+        <p class="mt-4 text-sm text-gray-600">このコードで安否報告やグループ参加が可能です。</p>
+    </div>
+    
+    <div class="bg-white p-6 rounded-xl shadow-lg text-center">
+        <h3 class="text-lg font-semibold mb-4">QRコード読み取り</h3>
+        
+        <button id="start-scan-btn" class="w-full bg-blue-500 text-white p-3 rounded-lg hover:bg-blue-600 transition-colors font-semibold">
+            カメラを起動してスキャン
+        </button>
+
+        <div id="qr-result" class="mt-4 text-sm text-gray-700 font-semibold"></div>
+        <div id="qr-reader" class="w-full mt-4" style="display: none;"></div>
+    </div>
+
+</div>
+{% endblock %}
+
+
+{% block scripts %}
+<script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', (event) => {
+        
+        const startButton = document.getElementById('start-scan-btn');
+        const readerDiv = document.getElementById('qr-reader');
+        const resultDiv = document.getElementById('qr-result');
+
+        let isScannerActive = false;
+        const html5QrCode = new Html5Qrcode("qr-reader");
+
+        const onScanSuccess = (decodedText, decodedResult) => {
+            resultDiv.textContent = `スキャン結果: ${decodedText}`;
+            stopScanner();
+        };
+
+        const onScanFailure = (error) => {
+            // エラーはコンソールにのみ出力
+        };
+
+        // スキャナを停止する関数
+        function stopScanner() {
+            if (isScannerActive) {
+                html5QrCode.stop().then(ignore => {
+                    readerDiv.style.display = 'none';
+                    startButton.style.display = 'block';
+                    startButton.textContent = "カメラを起動してスキャン";
+                    isScannerActive = false;
+                }).catch(err => {
+                    console.error("スキャナの停止に失敗", err);
+                });
+            }
+        }
+
+        // ボタンクリック時の処理
+        startButton.addEventListener('click', () => {
+            if (isScannerActive) {
+                stopScanner();
+                resultDiv.textContent = "スキャンを停止しました。";
+                return;
+            }
+            
+            resultDiv.textContent = "カメラを起動中...";
+            readerDiv.style.display = 'block';
+            startButton.style.display = 'none'; 
+            startButton.textContent = "スキャンを停止";
+
+            const config = { 
+                fps: 10,
+                qrbox: { width: 250, height: 250 }
+            };
+
+            html5QrCode.start(
+                { facingMode: "environment" },
+                config,
+                onScanSuccess,
+                onScanFailure
+            ).then(() => {
+                isScannerActive = true;
+                startButton.style.display = 'block';
+            }).catch(err => {
+                resultDiv.textContent = "カメラの起動に失敗しました。";
+                console.error("カメラの起動エラー", err);
+                readerDiv.style.display = 'none';
+                startButton.style.display = 'block';
+            });
+        });
+    });
+</script>
+{% endblock %}

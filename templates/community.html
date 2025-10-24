@@ -1,0 +1,47 @@
+{% extends "layout.html" %}
+
+{% block title %}コミュニティ{% endblock %}
+
+{% block content %}
+<div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-lg mx-auto text-left">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                {% if category == 'success' %}
+                <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4 w-full" role="alert">
+                    {{ message }}
+                </div>
+                {% endif %}
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <div id="community-content" class="mb-6">
+        <h3 class="text-lg font-semibold mb-3 text-gray-900">地域の情報掲示板</h3>
+        
+        <ul class="list-disc pl-5 text-gray-700 space-y-3">
+            {% for post in posts %}
+            <li>
+                <span class="font-semibold text-sm text-gray-800">{{ post.author.username }}:</span>
+                <span class="text-gray-700">{{ post.text }}</span>
+                <span class="text-xs text-gray-400 block text-right">{{ post.timestamp.strftime('%Y/%m/%d %H:%M') }}</span>
+            </li>
+            {% else %}
+            <li class="text-gray-500 list-none">まだ投稿はありません。</li>
+            {% endfor %}
+        </ul>
+    </div>
+    
+    <form method="POST" action="{{ url_for('community') }}">
+        {{ form.hidden_tag() }}
+        <h3 class="text-lg font-semibold mb-3 text-gray-900">掲示板に投稿する</h3>
+        
+        {{ form.text(class="w-full p-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500") }}
+        
+        <div class="text-right mt-3">
+            {{ form.submit(class="bg-teal-500 text-white p-3 rounded-xl hover:bg-teal-600 transition-colors font-semibold shadow-lg cursor-pointer") }}
+        </div>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,30 @@
+{% extends "layout.html" %}
+{% block title %}緊急情報{% endblock %}
+
+{% block content %}
+<div class="p-4 md:p-8 max-w-2xl mx-auto">
+    <h2 class="text-2xl font-bold mb-6 text-yellow-700">緊急情報（全員共通）</h2>
+    
+    <div class="bg-white p-6 rounded-xl shadow-lg mb-4">
+        <h3 class="text-xl font-semibold mb-2 text-red-600">行政の発信</h3>
+        <div class="bg-red-50 p-4 rounded-lg h-24 overflow-y-auto text-gray-800 border border-red-300">
+            <p class="font-bold">{{ gov_alert }}</p>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <a href="{{ url_for('shelter_info') }}" class="bg-blue-500 text-white p-4 rounded-xl font-semibold hover:bg-blue-600 transition-colors text-center">
+            避難場所空き情報
+        </a>
+        <a href="{{ url_for('realtime_info') }}" class="bg-blue-500 text-white p-4 rounded-xl font-semibold hover:bg-blue-600 transition-colors text-center">
+            リアルタイム情報
+        </a>
+        <a href="{{ url_for('hazard_map') }}" class="bg-blue-500 text-white p-4 rounded-xl font-semibold hover:bg-blue-600 transition-colors text-center">
+            ハザードマップDL
+        </a>
+        <a href="{{ url_for('disaster_contacts') }}" class="bg-blue-500 text-white p-4 rounded-xl font-semibold hover:bg-blue-600 transition-colors text-center">
+            防災用連絡先
+        </a>
+    </div>
+</div>
+{% endblock %}

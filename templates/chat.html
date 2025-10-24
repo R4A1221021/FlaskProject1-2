@@ -1,0 +1,44 @@
+{% extends "layout.html" %}
+
+{% block title %}チャット{% endblock %}
+
+{% block content %}
+<div class="flex flex-col bg-white p-6 rounded-xl shadow-2xl w-full max-w-md mx-auto h-[80vh]">
+    
+    <div class="flex-1 bg-gray-50 p-4 rounded-xl shadow-inner mb-4 overflow-y-auto">
+        
+        {% if not messages %}
+        <p class="text-center text-gray-500">まだメッセージはありません。</p>
+        {% endif %}
+
+        {% for message in messages %}
+            
+            {% if message.author == current_user %}
+            <div class="text-sm mb-2 text-right">
+                <p class="bg-blue-600 text-white p-3 rounded-t-xl rounded-bl-xl inline-block max-w-xs">
+                    {{ message.text }}
+                </p>
+            </div>
+            
+            {% else %}
+            <div class="text-sm mb-2">
+                <span class="text-xs text-gray-500">{{ message.author.username }}</span>
+                <p class="bg-gray-200 p-3 rounded-t-xl rounded-br-xl inline-block max-w-xs">
+                    {{ message.text }}
+                </p>
+            </div>
+            {% endif %}
+
+        {% endfor %}
+    </div>
+
+    <form class="flex" method="POST" action="{{ url_for('chat') }}">
+        {{ form.hidden_tag() }}
+        
+        {{ form.message(class="flex-1 p-3 border border-gray-300 rounded-l-xl focus:outline-none focus:ring-2 focus:ring-blue-500") }}
+        
+        {{ form.submit(class="bg-blue-600 text-white p-3 rounded-r-xl hover:bg-blue-700 transition-colors font-semibold cursor-pointer") }}
+    </form>
+    
+</div>
+{% endblock %}

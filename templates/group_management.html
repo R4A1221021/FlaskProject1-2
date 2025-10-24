@@ -1,0 +1,59 @@
+{% extends "layout.html" %}
+
+{% block title %}グループ管理{% endblock %}
+
+{% block content %}
+<div class="flex flex-col items-center justify-center h-full">
+    <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md">
+        
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-bold text-gray-800">グループ管理</h2>
+            <a href="{{ url_for('menu') }}" class="text-sm text-blue-500 hover:underline">&lt; メニューに戻る</a>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    {% if category == 'success' %}
+                    <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4 w-full" role="alert">
+                        {{ message }}
+                    </div>
+                    {% endif %}
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="mb-8">
+            <h3 class="text-lg font-semibold mb-3">所属グループ</h3>
+            <ul class="divide-y divide-gray-200">
+                {% for group in groups %}
+                <li class="py-3 flex justify-between items-center">
+                    <div>
+                        <p class="font-semibold text-gray-800">{{ group.name }}</p>
+                        <p class="text-sm text-gray-500">{{ group.members|length }}人のメンバー</p>
+                    </div>
+                    <a href="{{ url_for('group_chat', group_id=group.id) }}" class="bg-blue-500 text-white px-3 py-1 rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium">
+                        チャット
+                    </a>
+                </li>
+                {% else %}
+                <li class="py-3 text-gray-500">まだ所属しているグループはありません。</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <div>
+            <h3 class="text-lg font-semibold mb-3 border-t pt-6">新規グループ作成</h3>
+            <form method="POST" action="{{ url_for('group_management') }}">
+                {{ form.hidden_tag() }}
+                <div class.mb-4>
+                    {{ form.name.label(class="block text-gray-700 font-medium mb-1") }}
+                    {{ form.name(class="mt-1 p-3 w-full border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500") }}
+                </div>
+                {{ form.submit(class="w-full bg-teal-500 text-white p-3 rounded-lg hover:bg-teal-600 transition-all font-semibold shadow-md cursor-pointer mt-4") }}
+            </form>
+        </div>
+
+    </div>
+</div>
+{% endblock %}

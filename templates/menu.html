@@ -1,0 +1,28 @@
+{% extends "layout.html" %}
+
+{% block title %}メニュー{% endblock %}
+
+{% block content %}
+<div class="flex flex-col items-center justify-center h-full">
+    <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md text-center">
+        <h2 class="text-2xl font-bold mb-8 text-gray-800">
+            メインメニュー
+        </h2>
+        
+        <div class="grid grid-cols-2 gap-4">
+            
+            <a href="{{ url_for('chat') }}" class="block bg-purple-500 text-white p-4 rounded-xl hover:bg-purple-600 transition-all font-semibold shadow-lg">チャット</a>
+            
+            <a href="{{ url_for('community') }}" class="block bg-pink-500 text-white p-4 rounded-xl hover:bg-pink-600 transition-all font-semibold shadow-lg">コミュニティ</a>
+            
+            <a href="{{ url_for('qr_code') }}" class="block bg-orange-500 text-white p-4 rounded-xl hover:bg-orange-600 transition-all font-semibold shadow-lg">QRコード</a>
+            
+            <a href="{{ url_for('group_management') }}" class="block bg-teal-500 text-white p-4 rounded-xl hover:bg-teal-600 transition-all font-semibold shadow-lg">グループ管理</a>
+
+            <a href="{{ url_for('settings') }}" class="block bg-gray-600 text-white p-4 rounded-xl hover:bg-gray-700 transition-all font-semibold shadow-lg">設定</a>
+            </div>
+        
+        <a href="{{ url_for('logout') }}" class="mt-8 text-gray-600 hover:text-blue-700">ログアウト</a>
+    </div>
+</div>
+{% endblock %}
