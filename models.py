@@ -1,5 +1,4 @@
 import datetime
-# import secrets や import string を削除
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -68,17 +67,11 @@ class CommunityPost(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
 
-# ★ generate_share_id 関数を削除
-
-
 # グループモデル
 class Group(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     timestamp = db.Column(db.DateTime, index=True, default=datetime.datetime.now)
-
-    # ★ share_id カラムを削除
-
     chat_messages = db.relationship('GroupChatMessage', backref='group', lazy=True)
 
 

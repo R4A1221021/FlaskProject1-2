@@ -20,8 +20,14 @@
             <a href="{{ url_for('group_management') }}" class="block bg-teal-500 text-white p-4 rounded-xl hover:bg-teal-600 transition-all font-semibold shadow-lg">グループ管理</a>
 
             <a href="{{ url_for('settings') }}" class="block bg-gray-600 text-white p-4 rounded-xl hover:bg-gray-700 transition-all font-semibold shadow-lg">設定</a>
-            </div>
-        
+        </div>
+
+        {% if current_user.is_admin %}
+        <a href="{{ url_for('admin_menu') }}" class="mt-4 block w-full bg-red-600 text-white p-3 rounded-xl hover:bg-red-700 transition-all font-semibold shadow-lg">
+            ★ 管理者メニューへ
+        </a>
+        {% endif %}
+
         <a href="{{ url_for('logout') }}" class="mt-8 text-gray-600 hover:text-blue-700">ログアウト</a>
     </div>
 </div>

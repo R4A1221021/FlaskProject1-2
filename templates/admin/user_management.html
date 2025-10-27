@@ -1,0 +1,68 @@
+{% extends "layout.html" %}
+{% block title %}登録ユーザー管理{% endblock %}
+
+{% block content %}
+<div class="p-4 md:p-8 max-w-4xl mx-auto">
+    <div class="flex justify-between items-center mb-4">
+        <h2 class="text-2xl font-bold">登録ユーザー管理</h2>
+        <a href="{{ url_for('admin_menu') }}" class="text-sm text-blue-500 hover:underline">&lt; 管理者メニューに戻る</a>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="px-4 py-3 rounded relative mb-4 w-full
+                    {% if category == 'danger' %} bg-red-100 border border-red-400 text-red-700
+                    {% else %} bg-blue-100 border border-blue-400 text-blue-700 {% endif %}"
+                     role="alert">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <div class="bg-white p-6 rounded-xl shadow-lg overflow-x-auto">
+        <h3 class="text-lg font-semibold mb-4">全ユーザーリスト</h3>
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ユーザー名</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">管理者</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">最終安否報告 (支援要請)</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                {% for user, last_seen in users %}
+                <tr>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ user.id }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ user.username }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                        {% if user.is_admin %}
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                                はい
+                            </span>
+                        {% else %}
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
+                                いいえ
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {% if last_seen %}
+                            {{ last_seen.strftime('%Y/%m/%d %H:%M') }}
+                        {% else %}
+                            未報告
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="4" class="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">ユーザーが見つかりません。</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

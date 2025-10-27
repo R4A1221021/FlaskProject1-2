@@ -1,6 +1,9 @@
 import os
 import datetime
-from flask import Flask, render_template, redirect, url_for, flash, request
+import io
+import csv
+from functools import wraps
+from flask import Flask, render_template, redirect, url_for, flash, request, Response
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
@@ -11,7 +14,7 @@ from models import db, User, SupportRequest, SOSSignal, ChatMessage, CommunityPo
 from forms import (
     LoginForm, RegistrationForm, SupportRequestForm,
     ChatForm, CommunityPostForm, CreateGroupForm, GroupChatForm,
-    ChangeUsernameForm, ChangePasswordForm  # ★ 2つのフォームをインポート
+    ChangeUsernameForm, ChangePasswordForm
 )
 
 # --- アプリ設定 (変更なし) ---
@@ -36,7 +39,27 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 
-# --- ログイン / 登録 / ホーム (変更なし) ---
+# ★★★ 管理者専用デコレータの定義 ★★★
+def admin_required(f):
+    """
+    管理者(is_admin=True)のみアクセスを許可するデコレータ
+    """
+
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            # ログインしていない場合は通常のログインページへ
+            return login_manager.unauthorized()
+        if not current_user.is_admin:
+            # ログインしているが管理者でない場合はホームへ
+            flash('このページにアクセスする権限がありません。', 'danger')
+            return redirect(url_for('home'))
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
+# --- ログイン / 登録 / ホーム ---
 @app.route('/')
 @app.route('/home')
 @login_required
@@ -49,7 +72,6 @@ def utsumi():
     return 'utsumi'
 
 
-# ( ... login, register, logout ルートは変更なし ...)
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
@@ -79,7 +101,7 @@ def register():
             flash('そのユーザー名は既に使用されています。', 'danger')
             return redirect(url_for('login'))
 
-        # ★ 修正点: is_admin=False を明示的に指定
+        # ★ 修正点: is_admin=False を明示的に指定 (NOT NULLエラー解消)
         user = User(username=form.username.data, is_admin=False)
 
         user.set_password(form.password.data)
@@ -103,7 +125,6 @@ def logout():
 
 
 # --- 災害機能 (変更なし) ---
-# ( ... safety_check, emergency_sos, emergency_info, etc... ルートは変更なし ...)
 @app.route('/safety-check', methods=['GET', 'POST'])
 @login_required
 def safety_check():
@@ -192,7 +213,7 @@ def map():
     return render_template('map.html', title='マップ', api_key=api_key)
 
 
-# ( ... chat, community, qr, group, group_chat ルートは変更なし ...)
+# --- コミュニケーション機能 (変更なし) ---
 @app.route('/chat', methods=['GET', 'POST'])
 @login_required
 def chat():
@@ -275,23 +296,15 @@ def group_chat(group_id):
                            messages=messages)
 
 
-# ★ ------------------------------------
-# ★ ここが変更点です (POSTメソッド対応、フォーム処理追加)
-# ★ ------------------------------------
-@app.route('/settings', methods=['GET', 'POST'])  # 1. GET/POST許可
+# --- 設定・メニュー ---
+@app.route('/settings', methods=['GET', 'POST'])
 @login_required
 def settings():
-    """
-    設定画面
-    """
-    # 2. 両方のフォームをインスタンス化
     username_form = ChangeUsernameForm()
     password_form = ChangePasswordForm()
 
-    # 3. ユーザー名変更フォームの処理
     if username_form.validate_on_submit() and username_form.submit_username.data:
         new_username = username_form.username.data
-        # ユーザー名の重複チェック
         existing_user = User.query.filter_by(username=new_username).first()
         if existing_user and existing_user.id != current_user.id:
             flash('そのユーザー名は既に使用されています。', 'danger')
@@ -301,34 +314,114 @@ def settings():
             flash('ユーザー名を変更しました。', 'success')
         return redirect(url_for('settings'))
 
-    # 4. パスワード変更フォームの処理
     if password_form.validate_on_submit() and password_form.submit_password.data:
-        # 古いパスワードが正しいかチェック
         if not current_user.check_password(password_form.old_password.data):
             flash('現在のパスワードが正しくありません。', 'danger')
         else:
-            # 新しいパスワードを設定
             current_user.set_password(password_form.new_password.data)
             db.session.commit()
             flash('パスワードを変更しました。', 'success')
         return redirect(url_for('settings'))
 
-    # 5. GETリクエスト時 (フォームをテンプレートに渡す)
     return render_template('settings.html',
                            title='設定',
                            username_form=username_form,
                            password_form=password_form)
 
 
-# ★ ------------------------------------
-# ★ 変更点ここまで
-# ★ ------------------------------------
-
-
 @app.route('/menu')
 @login_required
 def menu():
     return render_template('menu.html', title='メニュー')
+
+
+# ★★★ 3. 管理者用ルートの追加 ★★★
+
+@app.route('/admin')
+@login_required
+@admin_required
+def admin_menu():
+    """
+    管理者メニュー画面
+    """
+    return render_template('admin/menu.html', title='管理者メニュー')
+
+
+@app.route('/admin/users')
+@login_required
+@admin_required
+def admin_user_management():
+    """
+    登録ユーザー管理画面
+    """
+    try:
+        # 最終安否確認（支援要請）のサブクエリ
+        last_request_sq = db.session.query(
+            SupportRequest.user_id,
+            db.func.max(SupportRequest.timestamp).label('last_timestamp')
+        ).group_by(SupportRequest.user_id).subquery()
+
+        users = db.session.query(
+            User,
+            last_request_sq.c.last_timestamp
+        ).outerjoin(
+            last_request_sq, User.id == last_request_sq.c.user_id
+        ).order_by(User.id).all()
+
+    except Exception as e:
+        app.logger.error(f"ユーザー取得エラー: {e}")
+        users = []  # エラー時は空リスト
+        flash('ユーザー情報の取得に失敗しました。', 'danger')
+
+    return render_template('admin/user_management.html', title='登録ユーザー管理', users=users)
+
+
+@app.route('/admin/sos_reports')
+@login_required
+@admin_required
+def admin_sos_reports():
+    """
+    SOSレポート確認画面
+    (支援要請(SupportRequest)を「レポート」として扱います)
+    """
+    reports = SupportRequest.query.order_by(SupportRequest.priority, SupportRequest.timestamp.desc()).all()
+    return render_template('admin/sos_reports.html', title='SOSレポート確認', reports=reports)
+
+
+@app.route('/admin/export_csv')
+@login_required
+@admin_required
+def admin_export_csv():
+    """
+    SOSレポート (支援要請) をCSV形式でエクスポート
+    """
+    reports = SupportRequest.query.all()
+
+    # メモリ内ファイル
+    si = io.StringIO()
+    cw = csv.writer(si)
+
+    # ヘッダー行
+    cw.writerow(['ID', 'ユーザー名', 'カテゴリ', '優先度', '詳細', 'タイムスタンプ'])
+
+    # データ行
+    for report in reports:
+        cw.writerow([
+            report.id,
+            report.author.username,
+            report.category,
+            report.priority,
+            report.details,
+            report.timestamp.strftime('%Y-%m-%d %H:%M:%S')
+        ])
+
+    output = si.getvalue()
+
+    return Response(
+        output,
+        mimetype="text/csv",
+        headers={"Content-disposition":
+                     "attachment; filename=sos_reports.csv"})
 
 
 # --- DB初期化コマンド (変更なし) ---
