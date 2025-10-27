@@ -38,7 +38,7 @@
 
             <form method="POST" action="{{ url_for('settings') }}" class="mb-6">
                 {{ username_form.hidden_tag() }}
-                <div class_="mb-4">
+                <div class="mb-4">
                     {{ username_form.username.label(class="block text-gray-700 font-medium mb-1") }}
                     {{ username_form.username(class="mt-1 p-3 w-full border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500", placeholder="新しいユーザー名") }}
                 </div>

@@ -35,6 +35,7 @@ login_manager.login_message_category = 'info'
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+
 # --- ログイン / 登録 / ホーム (変更なし) ---
 @app.route('/')
 @app.route('/home')
@@ -42,9 +43,11 @@ def load_user(user_id):
 def home():
     return render_template('home.html', title='ホーム')
 
+
 @app.route('/utsumi')
 def utsumi():
     return 'utsumi'
+
 
 # ( ... login, register, logout ルートは変更なし ...)
 @app.route('/login', methods=['GET', 'POST'])
@@ -63,6 +66,8 @@ def login():
             next_page = request.args.get('next')
             return redirect(next_page or url_for('home'))
     return render_template('login.html', title='ログイン', login_form=login_form, reg_form=reg_form)
+
+
 @app.route('/register', methods=['POST'])
 def register():
     if current_user.is_authenticated:
@@ -73,7 +78,10 @@ def register():
         if existing_user:
             flash('そのユーザー名は既に使用されています。', 'danger')
             return redirect(url_for('login'))
-        user = User(username=form.username.data)
+
+        # ★ 修正点: is_admin=False を明示的に指定
+        user = User(username=form.username.data, is_admin=False)
+
         user.set_password(form.password.data)
         db.session.add(user)
         db.session.commit()
@@ -84,12 +92,15 @@ def register():
             for error in errors:
                 flash(f"{getattr(form, field).label.text}: {error}", 'danger')
         return redirect(url_for('login'))
+
+
 @app.route('/logout')
 @login_required
 def logout():
     logout_user()
     flash('ログアウトしました。', 'success')
     return redirect(url_for('login'))
+
 
 # --- 災害機能 (変更なし) ---
 # ( ... safety_check, emergency_sos, emergency_info, etc... ルートは変更なし ...)
@@ -115,10 +126,14 @@ def safety_check():
         form=form,
         requests=all_requests
     )
+
+
 @app.route('/emergency-sos')
 @login_required
 def emergency_sos():
     return render_template('emergency_sos.html', title='緊急SOS発信')
+
+
 @app.route('/send-sos', methods=['POST'])
 @login_required
 def send_sos():
@@ -127,11 +142,15 @@ def send_sos():
     db.session.commit()
     flash(f'SOS信号を送信しました。救助隊が確認します。', 'danger')
     return redirect(url_for('emergency_sos'))
+
+
 @app.route('/emergency-info')
 @login_required
 def emergency_info():
     gov_alert = "[速報] 〇〇市全域に避難指示が発令されました。"
     return render_template('emergency_info.html', title='緊急情報', gov_alert=gov_alert)
+
+
 @app.route('/shelter-info')
 @login_required
 def shelter_info():
@@ -140,14 +159,20 @@ def shelter_info():
         {"name": "△△市民ホール", "status": "満室", "status_color": "text-red-500"}
     ]
     return render_template('shelter_info.html', title='避難場所空き情報', shelters=shelters)
+
+
 @app.route('/realtime-info')
 @login_required
 def realtime_info():
     return render_template('realtime_info.html', title='リアルタイム情報')
+
+
 @app.route('/hazard-map')
 @login_required
 def hazard_map():
     return render_template('hazard_map.html', title='ハザードマップ')
+
+
 @app.route('/disaster-contacts')
 @login_required
 def disaster_contacts():
@@ -156,6 +181,8 @@ def disaster_contacts():
         {"name": "消防・救急", "number": "119"}
     ]
     return render_template('disaster_contacts.html', title='防災用連絡先', contacts=contacts)
+
+
 @app.route('/map')
 @login_required
 def map():
@@ -163,6 +190,7 @@ def map():
     if not api_key:
         flash('Google Maps APIキーが設定されていません。', 'danger')
     return render_template('map.html', title='マップ', api_key=api_key)
+
 
 # ( ... chat, community, qr, group, group_chat ルートは変更なし ...)
 @app.route('/chat', methods=['GET', 'POST'])
@@ -179,6 +207,8 @@ def chat():
         return redirect(url_for('chat'))
     messages = ChatMessage.query.order_by(ChatMessage.timestamp.asc()).all()
     return render_template('chat.html', title='チャット', form=form, messages=messages)
+
+
 @app.route('/community', methods=['GET', 'POST'])
 @login_required
 def community():
@@ -194,10 +224,14 @@ def community():
         return redirect(url_for('community'))
     posts = CommunityPost.query.order_by(CommunityPost.timestamp.desc()).all()
     return render_template('community.html', title='コミュニティ', form=form, posts=posts)
+
+
 @app.route('/qr')
 @login_required
 def qr_code():
     return render_template('qr.html', title='QRコード')
+
+
 @app.route('/group', methods=['GET', 'POST'])
 @login_required
 def group_management():
@@ -214,6 +248,8 @@ def group_management():
                            title='グループ管理',
                            form=form,
                            groups=user_groups)
+
+
 @app.route('/group/<int:group_id>/chat', methods=['GET', 'POST'])
 @login_required
 def group_chat(group_id):
@@ -242,7 +278,7 @@ def group_chat(group_id):
 # ★ ------------------------------------
 # ★ ここが変更点です (POSTメソッド対応、フォーム処理追加)
 # ★ ------------------------------------
-@app.route('/settings', methods=['GET', 'POST']) # 1. GET/POST許可
+@app.route('/settings', methods=['GET', 'POST'])  # 1. GET/POST許可
 @login_required
 def settings():
     """
@@ -282,6 +318,8 @@ def settings():
                            title='設定',
                            username_form=username_form,
                            password_form=password_form)
+
+
 # ★ ------------------------------------
 # ★ 変更点ここまで
 # ★ ------------------------------------

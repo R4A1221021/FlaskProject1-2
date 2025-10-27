@@ -19,6 +19,9 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(100), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
 
+    # ★ 修正点: 'is_admin' カラムを追加 (NOT NULL制約エラー解消のため)
+    is_admin = db.Column(db.Boolean, nullable=False, default=False)
+
     requests = db.relationship('SupportRequest', backref='author', lazy=True)
     sos_signals = db.relationship('SOSSignal', backref='author', lazy=True)
     chat_messages = db.relationship('ChatMessage', backref='author', lazy=True)

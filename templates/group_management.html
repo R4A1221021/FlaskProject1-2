@@ -46,7 +46,7 @@
             <h3 class="text-lg font-semibold mb-3 border-t pt-6">新規グループ作成</h3>
             <form method="POST" action="{{ url_for('group_management') }}">
                 {{ form.hidden_tag() }}
-                <div class.mb-4>
+                <div class="mb-4">
                     {{ form.name.label(class="block text-gray-700 font-medium mb-1") }}
                     {{ form.name(class="mt-1 p-3 w-full border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500") }}
                 </div>
