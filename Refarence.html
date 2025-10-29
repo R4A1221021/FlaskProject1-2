@@ -1,0 +1,1603 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>災害情報共有アプリ (メインサーバー)</title>
+
+    <!-- 1. Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- 2. Leaflet (地図) CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <!-- 3. QR Code (生成) & HTML5-Qrcode (スキャン) JS -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+    <style>
+        /* デフォルトで全ての画面を非表示に */
+        .screen {
+            display: none;
+        }
+
+        /* アプリのコンテナ設定 */
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background-color: #f3f4f6;
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* メイン画面が縦いっぱいに広がるように設定 */
+        #safety-check-screen, #map-screen, #chat-screen, #field-chat-screen {
+            display: flex; /* 初期表示設定のため、flexを上書き */
+            flex-direction: column;
+            height: 100%;
+        }
+
+        /* Leaflet地図のコンテナサイズ */
+        #map-container {
+            height: 60vh; /* 画面の高さの60% */
+            border-radius: 0.75rem; /* rounded-xl */
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); /* shadow-lg */
+        }
+
+        /* QRコードスキャナのコンテナ */
+        #qr-scanner-container {
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+            border: 4px dashed #9ca3af; /* border-4 border-dashed border-gray-400 */
+            border-radius: 0.75rem; /* rounded-xl */
+        }
+        #qr-code-display {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 1rem;
+            border: 1px solid #e5e7eb; /* border */
+            border-radius: 0.75rem; /* rounded-xl */
+            min-height: 200px; /* 最小高さを確保 */
+        }
+
+        /* ローディングオーバーレイ */
+        #loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9998; /* 最前面 */
+            color: white;
+            font-size: 1.25rem;
+            display: none; /* 初期非表示 */
+        }
+
+        /* カスタムモーダル（alert/confirmの代わり） */
+        #custom-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            display: none; /* 初期非表示 */
+        }
+        .modal-content {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 0.75rem; /* rounded-xl */
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            width: 90%;
+            max-width: 400px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <div class="app-container">
+
+        <!-- アプリ共通のヘッダー -->
+        <header class="bg-blue-600 text-white p-4 shadow-md sticky top-0 z-10">
+            <h1 id="screen-title" class="text-xl font-bold text-center">災害情報共有アプリ</h1>
+        </header>
+
+        <!-- メインコンテンツエリア -->
+        <main class="flex-1 overflow-y-auto p-4 md:p-8">
+
+            <!-- ログイン・ユーザー登録画面 -->
+            <div id="login-screen" class="screen flex flex-col items-center justify-center h-full">
+                <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-sm">
+                    <h2 class="text-2xl font-extrabold mb-6 text-center text-blue-700">ログイン・ユーザー登録</h2>
+                    <div class="mb-4">
+                        <label class="block text-gray-700 font-medium">メールアドレス：</label>
+                        <input type="email" id="login-email" class="mt-1 p-3 w-full border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div class="mb-6">
+                        <label class="block text-gray-700 font-medium">パスワード：</label>
+                        <input type="password" id="login-password" class="mt-1 p-3 w-full border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <!-- onclick を削除し、id を付与 -->
+                    <button id="login-button" class="w-full bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition-all font-semibold mb-3 shadow-md">ログイン</button>
+                    <button id="register-button" class="w-full bg-gray-500 text-white p-3 rounded-lg hover:bg-gray-600 transition-all font-semibold">新規登録</button>
+                    <button id="anon-login-button" class="w-full text-blue-600 p-2 rounded-lg hover:bg-blue-50 transition-all text-sm mt-4">匿名で利用する</button>
+                </div>
+            </div>
+
+            <!-- ホーム画面 (一般ユーザー向け) -->
+            <div id="home-screen" class="screen flex flex-col items-center justify-center h-full">
+                <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md text-center">
+                    <h2 class="text-2xl font-bold mb-8 text-gray-800">避難支援ホーム</h2>
+                    <div class="grid grid-cols-2 gap-4">
+                        <!-- id を付与 -->
+                        <button id="home-nav-safety" class="bg-blue-500 text-white p-4 rounded-xl hover:bg-blue-600 transition-all font-semibold shadow-lg">安否確認・支援要請</button>
+                        <button id="home-nav-sos" class="bg-red-500 text-white p-4 rounded-xl hover:bg-red-600 transition-all font-semibold shadow-lg">緊急SOS発信</button>
+                        <button id="home-nav-map" class="bg-green-500 text-white p-4 rounded-xl hover:bg-green-600 transition-all font-semibold shadow-lg">マップ</button>
+                        <button id="home-nav-emergency" class="bg-yellow-500 text-white p-4 rounded-xl hover:bg-yellow-600 transition-all font-semibold shadow-lg">緊急情報</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 緊急SOS発信画面 -->
+            <div id="emergency-sos-screen" class="screen flex flex-col items-center justify-center h-full text-center">
+                <!-- id を付与 -->
+                <div id="sos-button" class="bg-white p-10 rounded-full shadow-2xl w-56 h-56 flex items-center justify-center border-8 border-red-500 transform hover:scale-105 transition-transform cursor-pointer">
+                    <h2 class="text-3xl font-extrabold text-red-600">SOS発信</h2>
+                </div>
+                <p class="mt-8 text-lg text-gray-600 font-medium">位置情報と安否状況を救助チームに即座に送信します。</p>
+            </div>
+
+            <!-- 安否確認・支援要請画面 (構造化フォーム適用) -->
+            <div id="safety-check-screen" class="screen p-4 md:p-8">
+                <h2 class="text-2xl font-bold mb-6 text-gray-800">安否確認・支援要請</h2>
+
+                <!-- 構造化された支援要請フォーム -->
+                <form id="support-request-form" class="bg-red-50 p-6 rounded-xl shadow-lg mb-6 border border-red-400">
+                    <h3 class="text-xl font-bold text-red-700 mb-4">【構造化】支援要請フォーム</h3>
+
+                    <div class="mb-4">
+                        <label class="block text-gray-700 font-semibold mb-1">要請カテゴリ (必須):</label>
+                        <!-- id を付与 -->
+                        <select id="request-category" class="mt-1 p-3 w-full border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 bg-white" required>
+                            <option value="">選択してください</option>
+                            <option value="food">食料</option>
+                            <option value="water">飲料水</option>
+                            <option value="medical">医療/医薬品</option>
+                            <option value="shelter">避難場所/毛布</option>
+                            <option value="other">その他</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-gray-700 font-semibold mb-1">優先度 (必須):</label>
+                        <div class="flex flex-wrap gap-4 mt-1" id="request-priority">
+                            <label class="flex items-center text-red-600 font-medium"><input type="radio" name="priority" value="high" class="h-5 w-5 text-red-600 focus:ring-red-500 mr-2" required> 高 (緊急)</label>
+                            <label class="flex items-center text-yellow-600 font-medium"><input type="radio" name="priority" value="medium" class="h-5 w-5 text-yellow-600 focus:ring-yellow-500 mr-2"> 中</label>
+                            <label class="flex items-center text-green-600 font-medium"><input type="radio" name="priority" value="low" class="h-5 w-5 text-green-600 focus:ring-green-500 mr-2"> 低</label>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-gray-700 font-semibold mb-1">詳細な状況/数量:</label>
+                        <!-- id を付与 -->
+                        <textarea id="request-details" rows="2" class="mt-1 p-3 w-full border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400" placeholder="具体的な品目や必要人数、期間を簡潔に入力してください。"></textarea>
+                    </div>
+
+                    <button type="submit" class="w-full bg-red-600 text-white p-3 rounded-lg hover:bg-red-700 transition-all font-semibold shadow-md">支援要請を送信</button>
+                </form>
+
+                <!-- 安否確認ボタン -->
+                <div class="bg-blue-50 p-6 rounded-xl shadow-lg mb-6 border border-blue-400">
+                    <h3 class="text-xl font-bold text-blue-700 mb-4">安否報告</h3>
+                    <p class="text-gray-600 mb-4">「無事です」ボタンを押すと、あなたの安否が家族や管理者に通知されます。</p>
+                    <button id="safety-check-in-button" class="w-full bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition-all font-semibold shadow-md">私は無事です</button>
+                </div>
+
+                <!-- 安否確認リスト/支援要請一覧 (動的更新エリア) -->
+                <div class="bg-white p-6 rounded-xl shadow-lg mb-6">
+                    <h3 class="text-lg font-semibold mb-2 text-blue-700">安否確認リスト (リアルタイム)</h3>
+                    <!-- id を付与 -->
+                    <ul id="safety-check-list" class="list-disc pl-5 text-gray-700 space-y-1">
+                        <li>読み込み中...</li>
+                    </ul>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-lg">
+                    <h3 class="text-lg font-semibold mb-2 text-red-700">支援要請一覧 (リアルタイム)</h3>
+                    <!-- id を付与 -->
+                    <ul id="support-request-list" class="list-disc pl-5 text-gray-700 space-y-1">
+                        <li>読み込み中...</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- マップ画面 -->
+            <div id="map-screen" class="screen flex flex-col h-full">
+                <!-- 地図コンテナ -->
+                <div id="map-container" class="bg-gray-300 flex-1 rounded-xl shadow-inner flex items-center justify-center text-gray-500 text-lg font-medium">
+                    地図を読み込み中...
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-lg mt-4">
+                    <!-- id を付与 -->
+                    <button id="location-share-button" class="w-full bg-blue-500 text-white p-3 rounded-lg hover:bg-blue-600 transition-colors font-semibold">位置情報共有画面へ</button>
+                </div>
+            </div>
+
+            <!-- ユーザーメインメニュー画面 (メニュー画面) -->
+            <div id="user-menu-screen" class="screen flex flex-col items-center justify-center h-full">
+                <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md text-center">
+                    <h2 class="text-2xl font-bold mb-6 text-gray-800">メインメニュー</h2>
+                    <div class="grid grid-cols-2 gap-4">
+                        <!-- id を付与 -->
+                        <button id="menu-nav-chat" class="bg-purple-500 text-white p-4 rounded-xl hover:bg-purple-600 transition-all font-semibold shadow-lg">チャット</button>
+                        <button id="menu-nav-community" class="bg-pink-500 text-white p-4 rounded-xl hover:bg-pink-600 transition-all font-semibold shadow-lg">コミュニティ</button>
+                        <button id="menu-nav-group" class="bg-teal-500 text-white p-4 rounded-xl hover:bg-teal-600 transition-all font-semibold shadow-lg">グループ管理</button>
+                        <button id="menu-nav-qr" class="bg-orange-500 text-white p-4 rounded-xl hover:bg-orange-600 transition-all font-semibold shadow-lg">QRコード</button>
+                        <button id="menu-nav-settings" class="bg-gray-600 text-white p-4 rounded-xl hover:bg-gray-700 transition-all font-semibold shadow-lg">設定</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- チャット画面 -->
+            <div id="chat-screen" class="screen flex flex-col h-full">
+                <h3 class="text-xl font-bold mb-4">グループチャット</h3>
+                <!-- グループ選択 (動的に生成) -->
+                <select id="chat-group-select" class="p-2 w-full border rounded-md bg-white mb-4">
+                    <option value="">参加中のグループを選択...</option>
+                </select>
+                <!-- メッセージリスト (動的更新エリア) -->
+                <div id="chat-messages-container" class="flex-1 bg-white p-4 rounded-xl shadow-inner mb-4 overflow-y-auto">
+                    <p class="text-gray-500 text-center">グループを選択してください</p>
+                </div>
+                <!-- メッセージ送信フォーム -->
+                <form id="chat-send-form" class="flex">
+                    <input type="text" id="chat-message-input" class="flex-1 p-3 border border-gray-300 rounded-l-xl focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="メッセージを入力..." disabled>
+                    <button type="submit" class="bg-blue-600 text-white p-3 rounded-r-xl hover:bg-blue-700 transition-colors font-semibold" disabled>送信</button>
+                </form>
+            </div>
+
+            <!-- コミュニティ画面 (意思疎通画面) はチャットと統合（タブ切り替えなどの想定） -->
+            <div id="community-screen" class="screen p-4 md:p-8">
+                <h2 class="text-2xl font-bold mb-4">ユーザーコミュニティ（情報交換）</h2>
+                <div class="bg-white p-6 rounded-xl shadow-lg">
+                    <h3 class="text-lg font-semibold mb-2">地域の情報掲示板</h3>
+                    <!-- 動的更新エリア -->
+                    <ul id="community-board-list" class="list-disc pl-5 text-gray-700">
+                        <li>読み込み中...</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- QRコード作成/読み取り/表示画面 -->
+            <div id="qr-screen" class="screen p-4 md:p-8">
+                <h2 class="text-2xl font-bold mb-4">QRコード機能</h2>
+                <div class="bg-white p-6 rounded-xl shadow-lg mb-6 text-center">
+                    <h3 class="text-lg font-semibold mb-4">あなたのユーザーID (QRコード)</h3>
+                    <!-- QRコード表示エリア -->
+                    <div id="qr-code-display" class_="bg-gray-200 w-48 h-48 mx-auto rounded-lg flex items-center justify-center border-4 border-gray-300">
+                        <!-- ここにqrcode.jsで生成 -->
+                    </div>
+                    <p class="mt-4 text-sm text-gray-600">このコードで安否報告やグループ参加が可能です。</p>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-lg text-center">
+                    <h3 class="text-lg font-semibold mb-4">QRコード読み取り (グループ参加など)</h3>
+                    <!-- id を付与 -->
+                    <button id="start-qr-scan-button" class="w-full bg-blue-500 text-white p-3 rounded-lg hover:bg-blue-600 transition-colors font-semibold">カメラを起動してスキャン</button>
+                    <!-- スキャン用コンテナ (非表示) -->
+                    <div id="qr-scanner-container" class="mt-4" style="display: none;"></div>
+                    <button id="stop-qr-scan-button" class="w-full bg-red-500 text-white p-2 rounded-lg hover:bg-red-600 transition-colors font-semibold mt-4" style="display: none;">スキャンを停止</button>
+                </div>
+            </div>
+
+            <!-- グループ管理画面（家庭内でグループを作る際に利用する） -->
+            <div id="group-management-screen" class="screen p-4 md:p-8">
+                <h2 class="text-2xl font-bold mb-4">グループ管理</h2>
+                <!-- グループ作成フォーム -->
+                <form id="create-group-form" class="bg-white p-6 rounded-xl shadow-lg mb-6">
+                    <h3 class="text-lg font-semibold mb-4">新しいグループを作成</h3>
+                    <input type="text" id="create-group-name" class="p-3 w-full border rounded-lg mb-4" placeholder="グループ名 (例: 家族, 〇〇避難所チーム)" required>
+                    <button type="submit" class="w-full bg-blue-500 text-white p-2 rounded-lg hover:bg-blue-600 transition-colors">作成</button>
+                </form>
+                <!-- 参加中グループリスト (動的更新エリア) -->
+                <div class="bg-white p-6 rounded-xl shadow-lg">
+                    <h3 class="text-lg font-semibold mb-2">参加中のグループ</h3>
+                    <ul id="my-groups-list" class="list-disc pl-5 text-gray-700">
+                        <li>読み込み中...</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- 位置情報共有画面 -->
+            <div id="location-share-screen" class="screen p-4 md:p-8">
+                <h2 class="text-2xl font-bold mb-4">位置情報共有</h2>
+                <div class="bg-white p-6 rounded-xl shadow-lg text-center">
+                    <p class="text-lg text-gray-700 mb-6">家族・グループメンバーとリアルタイムで位置情報を共有します。</p>
+                    <!-- id を付与 -->
+                    <button id="toggle-location-share-button" class="w-full bg-green-500 text-white p-3 rounded-lg hover:bg-green-600 transition-colors font-semibold">位置情報共有をONにする</button>
+                    <p id="location-status" class="text-sm text-gray-500 mt-4">現在のステータス: OFF</p>
+                </div>
+            </div>
+
+            <!-- 管理者（救助者・運営向け）メニュー画面 -->
+            <div id="admin-menu-screen" class="screen flex flex-col items-center justify-center h-full">
+                <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md text-center">
+                    <h2 class="text-2xl font-bold mb-8 text-red-700">管理者メニュー</h2>
+
+                    <h3 class="text-lg font-semibold mt-4 mb-2 text-gray-700 border-b pb-1">RPi/現場連携機能</h3>
+                    <p class="text-sm text-gray-500 mb-4">RPiからの構造化データを確認・同期します。</p>
+                    <div class="grid grid-cols-2 gap-4">
+                        <!-- id を付与 -->
+                        <button id="admin-nav-shelter" class="bg-indigo-500 text-white p-3 rounded-lg hover:bg-indigo-600 transition-colors">避難所受付データ</button>
+                        <button id="admin-nav-food" class="bg-yellow-500 text-white p-3 rounded-lg hover:bg-yellow-600 transition-colors">炊き出し確認データ</button>
+                    </div>
+
+                    <h3 class="text-lg font-semibold mt-6 mb-2 text-gray-700 border-b pb-1">データ管理機能</h3>
+                    <button id="admin-nav-shelter-management" class="w-full bg-orange-500 text-white p-3 rounded-lg mb-4 hover:bg-orange-600 transition-colors mt-4">避難所管理</button>
+                    <button id="admin-nav-users" class="w-full bg-blue-500 text-white p-3 rounded-lg mb-4 hover:bg-blue-600 transition-colors">登録ユーザー管理</button>
+                    <button id="admin-nav-reports" class="w-full bg-red-500 text-white p-3 rounded-lg hover:bg-red-600 transition-colors">SOSレポート確認・出力</button>
+                </div>
+            </div>
+
+            <!-- 避難所管理画面 (NEW) -->
+            <div id="shelter-management-screen" class="screen p-4 md:p-8">
+                <h2 class="text-2xl font-bold mb-4">避難所管理</h2>
+                <!-- 新規避難所登録フォーム -->
+                <form id="register-shelter-form" class="bg-white p-6 rounded-xl shadow-lg mb-6">
+                    <h3 class="text-lg font-semibold mb-4 text-orange-700">新規避難所の登録</h3>
+                    <div class="mb-4">
+                        <label class="block text-gray-700 font-medium">避難所名:</label>
+                        <input type="text" id="shelter-name" class="mt-1 p-3 w-full border rounded-lg" required>
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-gray-700 font-medium">収容可能人数 (最大キャパシティ):</label>
+                        <input type="number" id="shelter-capacity" class="mt-1 p-3 w-full border rounded-lg" required min="10">
+                    </div>
+                    <button type="submit" class="w-full bg-orange-500 text-white p-3 rounded-lg hover:bg-orange-600 transition-colors font-semibold">避難所を登録</button>
+                </form>
+
+                <!-- 既存避難所リスト -->
+                <div class="bg-white p-6 rounded-xl shadow-lg">
+                    <h3 class="text-lg font-semibold mb-2">登録済み避難所リスト</h3>
+                    <ul id="registered-shelter-list" class="list-disc pl-5 text-gray-700 space-y-1">
+                        <li>読み込み中...</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- 登録ユーザー管理画面 (動的更新エリア) -->
+            <div id="user-management-screen" class="screen p-4 md:p-8">
+                <h2 class="text-2xl font-bold mb-4">登録ユーザー管理</h2>
+                <div class="bg-white p-6 rounded-xl shadow-lg overflow-x-auto">
+                    <h3 class="text-lg font-semibold mb-2">ユーザーリスト (リアルタイム)</h3>
+                    <table class="w-full text-left">
+                        <thead>
+                            <tr class="border-b">
+                                <th class="p-2">Email</th>
+                                <th class="p-2">UID</th>
+                                <th class="p-2">安否</th>
+                            </tr>
+                        </thead>
+                        <tbody id="user-management-list">
+                            <tr><td colspan="3" class="p-2 text-gray-500">読み込み中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- SOSレポート確認・出力画面 (動的更新エリア) -->
+            <div id="report-list-screen" class="screen p-4 md:p-8">
+                <h2 class="text-2xl font-bold mb-4">SOSレポート確認・出力</h2>
+                <div class="bg-white p-6 rounded-xl shadow-lg">
+                    <h3 class="text-lg font-semibold mb-2">SOSレポートリスト (リアルタイム)</h3>
+                    <ul id="sos-report-list" class="list-disc pl-5 text-gray-700 space-y-1">
+                        <li>読み込み中...</li>
+                    </ul>
+                    <button id="export-sos-csv" class="mt-4 w-full bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700 transition-colors font-semibold">全レポートをCSV出力</button>
+                </div>
+            </div>
+
+            <!-- 緊急画面（全員共通の事項） -->
+            <div id="emergency-common-screen" class="screen p-4 md:p-8">
+                <h2 class="text-2xl font-bold mb-6 text-yellow-700">緊急情報（全員共通）</h2>
+                <div class="bg-white p-6 rounded-xl shadow-lg mb-4">
+                    <h3 class="text-xl font-semibold mb-2 text-red-600">行政の発信</h3>
+                    <div id="gov-broadcast-list" class="bg-red-50 p-4 rounded-lg h-24 overflow-y-auto text-gray-800 border border-red-300">
+                        <p class="font-bold">読み込み中...</p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- id を付与 -->
+                    <button id="emergency-nav-evac" class="bg-blue-500 text-white p-4 rounded-xl font-semibold hover:bg-blue-600 transition-colors">避難場所空き情報</button>
+                    <button id="emergency-nav-realtime" class="bg-blue-500 text-white p-4 rounded-xl font-semibold hover:bg-blue-600 transition-colors">リアルタイム情報</button>
+                    <button id="emergency-nav-hazard" class="bg-blue-500 text-white p-4 rounded-xl font-semibold hover:bg-blue-600 transition-colors">ハザードマップDL</button>
+                    <button id="emergency-nav-contact" class="bg-blue-500 text-white p-4 rounded-xl font-semibold hover:bg-blue-600 transition-colors">防災用連絡先</button>
+                </div>
+            </div>
+
+            <!-- 避難場所空き情報画面 (動的更新エリア) -->
+            <div id="evacuation-info-screen" class="screen p-4 md:p-8">
+                <h2 class="text-2xl font-bold mb-4">避難場所空き情報</h2>
+                <div class="bg-white p-6 rounded-xl shadow-lg">
+                    <ul id="evacuation-spot-list" class="list-disc pl-5 text-gray-700 space-y-2">
+                        <li>読み込み中...</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- リアルタイム情報画面 -->
+            <div id="realtime-info-screen" class="screen p-4 md:p-8">
+                <h2 class="text-2xl font-bold mb-4">リアルタイム情報</h2>
+                <div class="bg-white p-6 rounded-xl shadow-lg">
+                    <h3 class="text-xl font-semibold mb-2">特定地域の映像/ニュース</h3>
+                    <div class="bg-gray-200 h-64 mt-4 flex items-center justify-center text-gray-500 rounded-lg">
+                        地域ニュース or ライブ映像 (外部API連携)
+                    </div>
+                </div>
+            </div>
+
+            <!-- ハザードマップをダウンロードする画面 -->
+            <div id="hazard-map-download" class="screen p-4 md:p-8">
+                <h2 class="text-2xl font-bold mb-4">ハザードマップダウンロード</h2>
+                <div class="bg-white p-6 rounded-xl shadow-lg text-center">
+                    <a href="#" class="block w-full bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition-colors font-semibold">〇〇市ハザードマップ(PDF)をダウンロード</a>
+                </div>
+            </div>
+
+            <!-- 防災用連絡画面 -->
+            <div id="disaster-contact" class="screen p-4 md:p-8">
+                <h2 class="text-2xl font-bold mb-4">防災用連絡先</h2>
+                <div class="bg-white p-6 rounded-xl shadow-lg">
+                    <ul class="list-disc pl-5 text-gray-700">
+                        <li>災害対策本部: 090-XXXX-XXXX</li>
+                        <li>消防・救急: 119</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- 設定・プライバシー画面 (設定画面) -->
+            <div id="settings-screen" class="screen p-4 md:p-8">
+                <h2 class="text-2xl font-bold mb-4">設定・プライバシー</h2>
+                <div class="bg-white p-6 rounded-xl shadow-lg mb-6">
+                    <h3 class="text-lg font-semibold mb-2">ラズベリーパイ通信設定</h3>
+                    <p class="text-gray-600 mb-4">ラズベリーパイデバイスとのデータ同期設定を行います。</p>
+                    <button class="w-full bg-blue-500 text-white p-2 rounded-lg hover:bg-blue-600 transition-colors">RPiデバイス認証・ペアリング</button>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-lg">
+                    <h3 class="text-lg font-semibold mb-2">アカウント設定</h3>
+                    <p id="user-email-display" class="text-gray-600 mb-4">未ログイン</p>
+                    <button id="logout-button" class="w-full bg-gray-500 text-white p-2 rounded-lg hover:bg-gray-600 transition-colors">ログアウト</button>
+                </div>
+            </div>
+
+            <!-- エラー画面 -->
+            <div id="error-400-screen" class="screen flex flex-col items-center justify-center h-full text-center">
+                <h2 class="text-6xl font-extrabold text-red-500">400</h2>
+                <p class="text-xl text-gray-700 font-medium">不正なリクエストです。</p>
+            </div>
+            <div id="error-500-screen" class="screen flex flex-col items-center justify-center h-full text-center">
+                <h2 class="text-6xl font-extrabold text-red-500">500</h2>
+                <p class="text-xl text-gray-700 font-medium">サーバー内部エラーです。</p>
+            </div>
+
+            <!-- RPiデータ参照画面 -->
+            <div id="shelter-checkin-data" class="screen p-4 md:p-8">
+                <h2 class="text-2xl font-bold mb-4">避難所受付データ（RPi同期）</h2>
+                <div class="bg-white p-6 rounded-xl shadow-lg overflow-x-auto">
+                    <h3 class="text-lg font-semibold mb-2">受付ログ (リアルタイム)</h3>
+                    <table class="w-full text-left">
+                         <thead>
+                            <tr class="border-b">
+                                <th class="p-2">日時</th>
+                                <th class="p-2">避難所</th>
+                                <th class="p-2">UID</th>
+                                <th class="p-2">種別</th>
+                            </tr>
+                        </thead>
+                        <tbody id="shelter-log-list">
+                            <tr><td colspan="4" class="p-2 text-gray-500">読み込み中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div id="food-distribution-data" class="screen p-4 md:p-8">
+                <h2 class="text-2xl font-bold mb-4">炊き出し確認データ（RPi同期）</h2>
+                 <div class="bg-white p-6 rounded-xl shadow-lg overflow-x-auto">
+                    <h3 class="text-lg font-semibold mb-2">配布ログ (リアルタイム)</h3>
+                    <table class="w-full text-left">
+                         <thead>
+                            <tr class="border-b">
+                                <th class="p-2">日時</th>
+                                <th class="p-2">UID</th>
+                                <th class="p-2">物資</th>
+                                <th class="p-2">RPi ID</th>
+                            </tr>
+                        </thead>
+                        <tbody id="food-log-list">
+                            <tr><td colspan="4" class="p-2 text-gray-500">読み込み中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- アプリ共通のフッターナビゲーション -->
+        <footer class="bg-white p-2 shadow-inner border-t border-gray-200 flex justify-around items-center sticky bottom-0 z-10">
+            <!-- id を付与 -->
+            <button id="nav-home" class="flex flex-col items-center text-gray-600 hover:text-blue-600 transition-colors p-1 rounded-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+                <span class="text-xs">ホーム</span>
+            </button>
+            <button id="nav-menu" class="flex flex-col items-center text-gray-600 hover:text-purple-600 transition-colors p-1 rounded-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                <span class="text-xs">メニュー</span>
+            </button>
+             <button id="nav-admin" class="flex flex-col items-center text-gray-600 hover:text-red-600 transition-colors p-1 rounded-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.253.608 3.249 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                <span class="text-xs">管理者</span>
+            </button>
+        </footer>
+
+    </div>
+
+    <!-- ローディングオーバーレイ -->
+    <div id="loading-overlay">
+        <p>読み込み中...</p>
+    </div>
+
+    <!-- カスタムモーダル -->
+    <div id="custom-modal">
+        <div class="modal-content text-center">
+            <h3 id="modal-title" class="text-xl font-bold mb-4">タイトル</h3>
+            <p id="modal-message" class="text-gray-600 mb-6">メッセージ</p>
+            <button id="modal-close-button" class="w-full bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700">閉じる</button>
+        </div>
+    </div>
+
+
+    <!-- 4. Firebase JS SDK (モジュールとしてインポート) -->
+    <script type="module">
+        // Firebase SDK のインポート
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import {
+            getAuth,
+            onAuthStateChanged,
+            signInAnonymously,
+            signInWithCustomToken,
+            createUserWithEmailAndPassword,
+            signInWithEmailAndPassword,
+            signOut
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import {
+            getFirestore,
+            setLogLevel,
+            doc,
+            getDoc,
+            setDoc,
+            addDoc,
+            collection,
+            query,
+            where,
+            onSnapshot,
+            serverTimestamp,
+            arrayUnion,
+            updateDoc,
+            increment
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- グローバル変数 -------------------------------------------------
+        let app;
+        let auth;
+        let db;
+        let userId = null;
+        let userEmail = null;
+        let leafletMap = null;
+        let qrCodeGenerator = null;
+        let qrCodeScanner = null;
+        let locationWatcherId = null;
+
+        // 避難所の名前とIDを格納するマップ
+        const shelterMap = new Map();
+
+        // グローバルなリスナー（デタッチ用）
+        let chatListener = null;
+
+        // Canvas 環境から設定を取得
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // --- DOM要素 ------------------------------------------------------
+        const screens = document.querySelectorAll('.screen');
+        const screenTitle = document.getElementById('screen-title');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const modal = document.getElementById('custom-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalMessage = document.getElementById('modal-message');
+        const modalCloseButton = document.getElementById('modal-close-button');
+
+
+        // --- ユーティリティ関数 --------------------------------------------
+
+        /**
+         * 指定された画面を表示し、タイトルを変更する
+         * @param {string} screenId 表示する画面のID
+         * @param {string} titleText ヘッダーに表示するタイトル
+         * @param {function} [onShowCallback] 画面表示時に実行するコールバック
+         */
+        function showScreen(screenId, titleText, onShowCallback = null) {
+            // 他の画面を非表示にする
+            screens.forEach(screen => {
+                screen.style.display = 'none';
+            });
+            // 該当画面を表示
+            const targetScreen = document.getElementById(screenId);
+            if (targetScreen) {
+                targetScreen.style.display = 'flex'; // flexで表示
+
+                // 画面種別に応じてflex-colを調整
+                if (['login-screen', 'home-screen', 'emergency-sos-screen', 'admin-menu-screen'].includes(screenId)) {
+                    targetScreen.classList.remove('flex-col');
+                } else {
+                    targetScreen.classList.add('flex-col');
+                }
+
+                screenTitle.textContent = titleText;
+                // 画面切り替え時にスクロールをトップに戻す
+                document.querySelector('main').scrollTop = 0;
+
+                // コールバックを実行
+                if (onShowCallback) {
+                    onShowCallback();
+                }
+
+            } else {
+                console.error(`Screen with id ${screenId} not found.`);
+            }
+
+            // もしQRスキャナが表示されていれば停止する
+            if (screenId !== 'qr-screen' && qrCodeScanner && qrCodeScanner.isScanning) {
+                stopQrScanner();
+            }
+        }
+
+        function showLoading(message = "読み込み中...") {
+            loadingOverlay.querySelector('p').textContent = message;
+            loadingOverlay.style.display = 'flex';
+        }
+
+        function hideLoading() {
+            loadingOverlay.style.display = 'none';
+        }
+
+        function showCustomModal(title, message) {
+            modalTitle.textContent = title;
+            modalMessage.textContent = message;
+            modal.style.display = 'flex';
+        }
+
+        modalCloseButton.addEventListener('click', () => {
+            modal.style.display = 'none';
+        });
+
+        // --- データベースパス管理 --------------------------------------------
+
+        // ユーザーのプライベートデータパス
+        function getPrivateCollectionPath(collectionName) {
+            if (!userId) throw new Error("User not authenticated.");
+            return `artifacts/${appId}/users/${userId}/${collectionName}`;
+        }
+
+        // アプリ共通のパブリックデータパス
+        function getPublicCollectionPath(collectionName) {
+            return `artifacts/${appId}/public/data/${collectionName}`;
+        }
+
+        // --- Firebase初期化と認証 -----------------------------------------
+
+        async function initializeFirebaseAndAuth() {
+            try {
+                showLoading("初期化しています...");
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                // Firestoreのデバッグログを有効化
+                setLogLevel('debug');
+
+                // 認証状態の監視
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        // ユーザーがログインしている
+                        userId = user.uid;
+                        userEmail = user.email || (user.isAnonymous ? "匿名ユーザー" : "不明");
+                        console.log(`Authenticated: ${userEmail} (UID: ${userId})`);
+
+                        document.getElementById('user-email-display').textContent = `ログイン中: ${userEmail}`;
+
+                        // ユーザープロファイルを作成/確認
+                        await checkAndCreateUserProfile(user);
+
+                        // 認証OKなので、アプリのメインロジック（リスナー設定など）を開始
+                        initializeAppLogic(userId);
+
+                        // ホーム画面に遷移
+                        showScreen('home-screen', 'ホーム');
+
+                    } else {
+                        // ユーザーがログインしていない
+                        userId = null;
+                        userEmail = null;
+                        console.log("Not authenticated.");
+                        document.getElementById('user-email-display').textContent = "未ログイン";
+
+                        // ログイン画面を表示
+                        showScreen('login-screen', 'ログイン・ユーザー登録');
+                    }
+                    hideLoading();
+                });
+
+                // 渡されたトークンでのサインインを試みる
+                if (initialAuthToken) {
+                    console.log("Attempting sign in with custom token...");
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else if (!auth.currentUser) {
+                    // トークンがなく、現在ログインもしていない場合、匿名認証を試みる
+                    // ※本番ではログイン画面を出すべきだが、Canvas環境用
+                    console.log("No custom token, attempting anonymous sign in...");
+                    await signInAnonymously(auth);
+                }
+
+                // auth.currentUser がこの時点で存在すれば、onAuthStateChanged が発火する
+                if(auth.currentUser && !userId) {
+                     // 既にログイン済みだった場合のフォールバック
+                    onAuthStateChanged(auth, auth.currentUser);
+                }
+
+            } catch (error) {
+                console.error("Firebase Auth Error:", error);
+                showCustomModal("認証エラー", `Firebaseへの接続に失敗しました: ${error.message}`);
+                hideLoading();
+                // 認証なしでもログイン画面は表示する
+                showScreen('login-screen', 'ログイン・ユーザー登録');
+            }
+        }
+
+        // ユーザープロファイルの確認と作成
+        async function checkAndCreateUserProfile(user) {
+            if (user.isAnonymous) return; // 匿名ユーザーはプロファイル不要
+
+            const userProfileRef = doc(db, getPublicCollectionPath('userProfiles'), user.uid);
+            const userProfileSnap = await getDoc(userProfileRef);
+
+            if (!userProfileSnap.exists()) {
+                // プロファイルが存在しないので作成
+                try {
+                    await setDoc(userProfileRef, {
+                        email: user.email,
+                        uid: user.uid,
+                        createdAt: serverTimestamp()
+                    });
+                    console.log("User profile created.");
+                } catch (e) {
+                    console.error("Error creating user profile: ", e);
+                }
+            } else {
+                console.log("User profile already exists.");
+            }
+        }
+
+        // --- アプリのメインロジック（リスナー設定） ------------------------------
+
+        /**
+         * 認証成功後に呼び出され、Firestoreのリスナーを設定する
+         * @param {string} currentUserId 認証済みユーザーのID
+         */
+        function initializeAppLogic(currentUserId) {
+            if (!currentUserId) return;
+
+            console.log("Initializing app logic and listeners...");
+
+            // 0. 避難所リストの監視 (全リスナーの前に実行し、shelterMapを構築)
+            const shelterQuery = query(collection(db, getPublicCollectionPath('evacuationSpots')));
+            onSnapshot(shelterQuery, (snapshot) => {
+                shelterMap.clear(); // マップをクリア
+                const registeredListEl = document.getElementById('registered-shelter-list');
+                const availableListEl = document.getElementById('evacuation-spot-list');
+
+                registeredListEl.innerHTML = '';
+                availableListEl.innerHTML = '';
+
+                if (snapshot.empty) {
+                    registeredListEl.innerHTML = '<li>登録された避難所はありません。</li>';
+                    availableListEl.innerHTML = '<li>現在、避難所情報はありません。</li>';
+                    return;
+                }
+
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    const shelterId = doc.id;
+                    shelterMap.set(shelterId, data.name);
+                    const occupancy = data.currentOccupancy || 0;
+                    const capacity = data.capacity || 0;
+                    const remaining = capacity - occupancy;
+                    const statusClass = remaining > 50 ? 'text-green-600' : remaining > 10 ? 'text-yellow-600' : 'text-red-600';
+                    const statusText = remaining > 0 ? `${remaining}人空き` : '満員';
+
+                    // 管理者リストの更新
+                    registeredListEl.innerHTML += `<li class="mb-1"><strong>${data.name}</strong> (ID: ${shelterId}) - キャパシティ: ${capacity}人</li>`;
+
+                    // 一般ユーザー向けリストの更新
+                    availableListEl.innerHTML += `
+                        <li class="border-b pb-2">
+                            <strong class="text-lg">${data.name}</strong><br>
+                            <span class="${statusClass} font-semibold">空き状況: ${statusText}</span> (収容人数: ${capacity}人, 在籍: ${occupancy}人)
+                        </li>
+                    `;
+                });
+            });
+
+
+            // 1. 安否確認リストの監視
+            const safetyQuery = query(collection(db, getPublicCollectionPath('safetyChecks')));
+            onSnapshot(safetyQuery, (snapshot) => {
+                const listEl = document.getElementById('safety-check-list');
+                listEl.innerHTML = ''; // リストをクリア
+                if (snapshot.empty) {
+                    listEl.innerHTML = '<li>まだ報告はありません。</li>';
+                    return;
+                }
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    const userName = data.userEmail || doc.id;
+                    const time = data.timestamp?.toDate().toLocaleString('ja-JP') || '不明';
+                    listEl.innerHTML += `<li class="text-green-600 font-medium">${userName} : 無事 (報告日時: ${time})</li>`;
+                });
+            });
+
+            // 2. 支援要請リストの監視
+            const supportQuery = query(collection(db, getPublicCollectionPath('supportRequests')));
+            onSnapshot(supportQuery, (snapshot) => {
+                const listEl = document.getElementById('support-request-list');
+                listEl.innerHTML = ''; // リストをクリア
+                if (snapshot.empty) {
+                    listEl.innerHTML = '<li>現在、支援要請はありません。</li>';
+                    return;
+                }
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    const userName = data.userEmail || doc.id;
+                    listEl.innerHTML += `<li class="text-red-600 font-medium">${userName}: ${data.category} (優先度: ${data.priority}) - ${data.details}</li>`;
+                });
+            });
+
+            // 3. SOSレポートの監視 (管理者画面用)
+            const sosQuery = query(collection(db, getPublicCollectionPath('sosSignals')));
+            onSnapshot(sosQuery, (snapshot) => {
+                const listEl = document.getElementById('sos-report-list');
+                listEl.innerHTML = '';
+                if (snapshot.empty) {
+                    listEl.innerHTML = '<li>SOSレポートはありません。</li>';
+                    return;
+                }
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    const time = data.timestamp?.toDate().toLocaleString('ja-JP') || '不明';
+                    listEl.innerHTML += `<li>[${time}] ${data.userEmail} (${data.location.lat.toFixed(4)}, ${data.location.lng.toFixed(4)})</li>`;
+                });
+            });
+
+            // 4. RPi避難所ログの監視 (管理者画面用)
+            const shelterLogQuery = query(collection(db, getPublicCollectionPath('rpi_shelter_logs')));
+            onSnapshot(shelterLogQuery, (snapshot) => {
+                const listEl = document.getElementById('shelter-log-list');
+                listEl.innerHTML = '';
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    const time = data.timestamp?.toDate().toLocaleString('ja-JP');
+                    // 避難所IDを名前に変換
+                    const shelterName = shelterMap.get(data.shelterId) || `ID: ${data.shelterId.substring(0, 8)}...`;
+
+                    listEl.innerHTML += `<tr class="border-b">
+                                            <td class="p-2">${time}</td>
+                                            <td class="p-2">${shelterName}</td>
+                                            <td class="p-2">${data.userId}</td>
+                                            <td class="p-2">${data.type}</td>
+                                        </tr>`;
+                });
+            });
+
+            // 5. RPi炊き出しログの監視 (管理者画面用)
+            const foodLogQuery = query(collection(db, getPublicCollectionPath('rpi_food_logs')));
+            onSnapshot(foodLogQuery, (snapshot) => {
+                const listEl = document.getElementById('food-log-list');
+                listEl.innerHTML = '';
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    const time = data.timestamp?.toDate().toLocaleString('ja-JP');
+                    listEl.innerHTML += `<tr class="border-b"><td class="p-2">${time}</td><td class="p-2">${data.userId}</td><td class="p-2">${data.item}</td><td class="p-2">${data.rpiId}</td></tr>`;
+                });
+            });
+
+            // 6. ユーザー管理リストの監視 (管理者画面用)
+            const usersQuery = query(collection(db, getPublicCollectionPath('userProfiles')));
+            onSnapshot(usersQuery, (snapshot) => {
+                const listEl = document.getElementById('user-management-list');
+                listEl.innerHTML = '';
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    listEl.innerHTML += `<tr class="border-b"><td class="p-2">${data.email}</td><td class="p-2">${data.uid.substring(0, 10)}...</td><td class="p-2">確認中...</td></tr>`;
+                });
+            });
+
+            // 7. 参加中グループの監視 (グループ管理画面・チャット画面用)
+            const groupsQuery = query(collection(db, getPublicCollectionPath('groups')), where("members", "array-contains", currentUserId));
+            onSnapshot(groupsQuery, (snapshot) => {
+                const groupListEl = document.getElementById('my-groups-list');
+                const chatSelectEl = document.getElementById('chat-group-select');
+
+                groupListEl.innerHTML = '';
+                // 選択肢をクリア（デフォルトの選択肢は残す）
+                chatSelectEl.options.length = 1;
+
+                if (snapshot.empty) {
+                    groupListEl.innerHTML = '<li>参加中のグループはありません。</li>';
+                    return;
+                }
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    const groupId = doc.id;
+
+                    // グループ管理リストに追加
+                    groupListEl.innerHTML += `<li class="mb-2"><strong>${data.name}</strong> (ID: ${groupId})</li>`;
+
+                    // チャットの選択肢に追加
+                    const option = new Option(data.name, groupId);
+                    chatSelectEl.add(option);
+                });
+            });
+
+            // 8. 地図の初期化
+            initMap();
+
+            // 9. QRコード生成器の初期化
+            initQrCodeGenerator(currentUserId);
+        }
+
+        // --- イベントリスナー設定 --------------------------------------------
+
+        // DOM読み込み完了後にイベントリスナーをアタッチ
+        document.addEventListener('DOMContentLoaded', () => {
+
+            // --- 認証 ---
+            document.getElementById('login-button').addEventListener('click', handleLogin);
+            document.getElementById('register-button').addEventListener('click', handleRegister);
+            document.getElementById('anon-login-button').addEventListener('click', handleAnonymousLogin);
+            document.getElementById('logout-button').addEventListener('click', handleLogout);
+
+            // --- フッターナビゲーション ---
+            document.getElementById('nav-home').addEventListener('click', () => showScreen('home-screen', 'ホーム'));
+            document.getElementById('nav-menu').addEventListener('click', () => showScreen('user-menu-screen', 'メインメニュー'));
+            document.getElementById('nav-admin').addEventListener('click', () => showScreen('admin-menu-screen', '管理者メニュー'));
+
+            // --- ホーム画面 ---
+            document.getElementById('home-nav-safety').addEventListener('click', () => showScreen('safety-check-screen', '安否確認・支援要請'));
+            document.getElementById('home-nav-sos').addEventListener('click', () => showScreen('emergency-sos-screen', '緊急SOS発信'));
+            document.getElementById('home-nav-map').addEventListener('click', () => showScreen('map-screen', 'マップ'));
+            document.getElementById('home-nav-emergency').addEventListener('click', () => showScreen('emergency-common-screen', '緊急情報'));
+
+            // --- SOS画面 ---
+            document.getElementById('sos-button').addEventListener('click', handleSos);
+
+            // --- 安否確認・支援要請画面 ---
+            document.getElementById('support-request-form').addEventListener('submit', handleSupportRequest);
+            document.getElementById('safety-check-in-button').addEventListener('click', handleSafetyCheckIn);
+
+            // --- メニュー画面 ---
+            document.getElementById('menu-nav-chat').addEventListener('click', () => showScreen('chat-screen', 'チャット'));
+            document.getElementById('menu-nav-community').addEventListener('click', () => showScreen('community-screen', 'コミュニティ'));
+            document.getElementById('menu-nav-group').addEventListener('click', () => showScreen('group-management-screen', 'グループ管理'));
+            document.getElementById('menu-nav-qr').addEventListener('click', () => showScreen('qr-screen', 'QRコード'));
+            document.getElementById('menu-nav-settings').addEventListener('click', () => showScreen('settings-screen', '設定'));
+
+            // --- 緊急情報画面 ---
+            document.getElementById('emergency-nav-evac').addEventListener('click', () => showScreen('evacuation-info-screen', '避難場所空き情報'));
+            document.getElementById('emergency-nav-realtime').addEventListener('click', () => showScreen('realtime-info-screen', 'リアルタイム情報'));
+            document.getElementById('emergency-nav-hazard').addEventListener('click', () => showScreen('hazard-map-download', 'ハザードマップ'));
+            document.getElementById('emergency-nav-contact').addEventListener('click', () => showScreen('disaster-contact', '防災用連絡先'));
+
+            // --- マップ画面 ---
+            document.getElementById('location-share-button').addEventListener('click', () => showScreen('location-share-screen', '位置情報共有'));
+            document.getElementById('toggle-location-share-button').addEventListener('click', toggleLocationSharing);
+
+            // --- QRコード画面 ---
+            document.getElementById('start-qr-scan-button').addEventListener('click', startQrScanner);
+            document.getElementById('stop-qr-scan-button').addEventListener('click', stopQrScanner);
+
+            // --- グループ管理画面 ---
+            document.getElementById('create-group-form').addEventListener('submit', handleCreateGroup);
+
+            // --- チャット画面 ---
+            document.getElementById('chat-group-select').addEventListener('change', loadChatMessages);
+            document.getElementById('chat-send-form').addEventListener('submit', handleSendChatMessage);
+
+            // --- 管理者メニュー ---
+            document.getElementById('admin-nav-shelter-management').addEventListener('click', () => showScreen('shelter-management-screen', '避難所管理')); // NEW
+            document.getElementById('admin-nav-shelter').addEventListener('click', () => showScreen('shelter-checkin-data', '避難所受付データ'));
+            document.getElementById('admin-nav-food').addEventListener('click', () => showScreen('food-distribution-data', '炊き出し確認データ'));
+            document.getElementById('admin-nav-users').addEventListener('click', () => showScreen('user-management-screen', '登録ユーザー管理'));
+            document.getElementById('admin-nav-reports').addEventListener('click', () => showScreen('report-list-screen', 'SOSレポート確認'));
+
+            // --- 避難所管理画面 ---
+            document.getElementById('register-shelter-form').addEventListener('submit', handleRegisterShelter); // NEW
+
+            // --- アプリケーションの起動 ---
+            initializeFirebaseAndAuth();
+        });
+
+        // --- 機能別ハンドラ関数 --------------------------------------------
+
+        // ログイン
+        async function handleLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            if (!email || !password) {
+                showCustomModal("入力エラー", "メールアドレスとパスワードを入力してください。");
+                return;
+            }
+            showLoading("ログインしています...");
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+                // 成功すると onAuthStateChanged が発火する
+            } catch (error) {
+                console.error("Login Error:", error);
+                showCustomModal("ログインエラー", error.message);
+                hideLoading();
+            }
+        }
+
+        // 新規登録
+        async function handleRegister(e) {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            if (!email || !password) {
+                showCustomModal("入力エラー", "メールアドレスとパスワードを入力してください。");
+                return;
+            }
+            showLoading("登録しています...");
+            try {
+                await createUserWithEmailAndPassword(auth, email, password);
+                // 成功すると onAuthStateChanged が発火し、
+                // checkAndCreateUserProfile が呼ばれる
+            } catch (error) {
+                console.error("Register Error:", error);
+                showCustomModal("登録エラー", error.message);
+                hideLoading();
+            }
+        }
+
+        // 匿名ログイン
+        async function handleAnonymousLogin(e) {
+            e.preventDefault();
+            showLoading("匿名でログインしています...");
+            try {
+                await signInAnonymously(auth);
+            } catch (error) {
+                console.error("Anonymous Login Error:", error);
+                showCustomModal("エラー", error.message);
+                hideLoading();
+            }
+        }
+
+        // ログアウト
+        async function handleLogout() {
+            try {
+                await signOut(auth);
+                // 成功すると onAuthStateChanged が発火する
+                // 全てのリスナーをデタッチ
+                if (chatListener) chatListener();
+                chatListener = null;
+                // マップをリセット
+                if (leafletMap) {
+                    leafletMap.remove();
+                    leafletMap = null;
+                }
+            } catch (error) {
+                console.error("Logout Error:", error);
+                showCustomModal("ログアウトエラー", error.message);
+            }
+        }
+
+        // SOS発信
+        function handleSos() {
+            if (!userId) {
+                showCustomModal("認証エラー", "この機能を利用するにはログインが必要です。");
+                return;
+            }
+            showLoading("位置情報を取得中...");
+            if (!navigator.geolocation) {
+                hideLoading();
+                showCustomModal("エラー", "お使いのブラウザは位置情報取得に対応していません。");
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(async (position) => {
+                const loc = {
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude
+                };
+
+                showLoading("SOS信号を送信中...");
+                try {
+                    const sosCollectionRef = collection(db, getPublicCollectionPath('sosSignals'));
+                    await addDoc(sosCollectionRef, {
+                        userId: userId,
+                        userEmail: userEmail,
+                        location: loc,
+                        timestamp: serverTimestamp()
+                    });
+                    hideLoading();
+                    showCustomModal("送信完了", "SOS信号を送信しました。救助を待ってください。");
+                } catch (error) {
+                    hideLoading();
+                    console.error("SOS Send Error: ", error);
+                    showCustomModal("送信エラー", error.message);
+                }
+
+            }, (error) => {
+                hideLoading();
+                console.error("Geolocation Error: ", error);
+                showCustomModal("位置情報エラー", `位置情報の取得に失敗しました: ${error.message}`);
+            });
+        }
+
+        // 支援要請
+        async function handleSupportRequest(e) {
+            e.preventDefault();
+            if (!userId) {
+                showCustomModal("認証エラー", "この機能を利用するにはログインが必要です。");
+                return;
+            }
+
+            const category = document.getElementById('request-category').value;
+            const priority = document.querySelector('input[name="priority"]:checked')?.value;
+            const details = document.getElementById('request-details').value;
+
+            if (!category || !priority) {
+                showCustomModal("入力エラー", "カテゴリと優先度は必須です。");
+                return;
+            }
+
+            showLoading("支援要請を送信中...");
+            try {
+                const requestCollectionRef = collection(db, getPublicCollectionPath('supportRequests'));
+                await addDoc(requestCollectionRef, {
+                    userId: userId,
+                    userEmail: userEmail,
+                    category: category,
+                    priority: priority,
+                    details: details,
+                    status: "new",
+                    timestamp: serverTimestamp()
+                });
+                hideLoading();
+                showCustomModal("送信完了", "支援要請を送信しました。");
+                // フォームをリセット
+                e.target.reset();
+
+            } catch (error) {
+                hideLoading();
+                console.error("Support Request Error: ", error);
+                showCustomModal("送信エラー", error.message);
+            }
+        }
+
+        // 安否報告
+        async function handleSafetyCheckIn() {
+            if (!userId) {
+                showCustomModal("認証エラー", "この機能を利用するにはログインが必要です。");
+                return;
+            }
+            showLoading("安否情報を送信中...");
+            try {
+                // ドキュメントIDをUserIDにすることで、1人1つの最新安否情報（上書き）にする
+                const safetyDocRef = doc(db, getPublicCollectionPath('safetyChecks'), userId);
+                await setDoc(safetyDocRef, {
+                    userId: userId,
+                    userEmail: userEmail,
+                    status: "safe",
+                    timestamp: serverTimestamp()
+                });
+                hideLoading();
+                showCustomModal("送信完了", "安否情報を「無事」として報告しました。");
+
+            } catch (error) {
+                hideLoading();
+                console.error("Safety Check-in Error: ", error);
+                showCustomModal("送信エラー", error.message);
+            }
+        }
+
+        // マップ初期化
+        function initMap() {
+            // 既に地図が存在する場合はリセット
+            if (leafletMap) {
+                leafletMap.remove();
+                leafletMap = null;
+            }
+
+            try {
+                // Leaflet地図を 'map-container' に初期化
+                leafletMap = L.map('map-container').setView([34.397, 132.455], 13); // 広島市中心部をデフォルトに
+
+                // OpenStreetMapのタイルレイヤーを追加
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19,
+                    attribution: '© OpenStreetMap contributors'
+                }).addTo(leafletMap);
+
+                // ここでFirestoreから避難所やSOS信号を読み込んでピンを立てる
+                // 例:
+                L.marker([34.397, 132.455]).addTo(leafletMap)
+                    .bindPopup('避難所A (デモ)')
+                    .openPopup();
+
+            } catch (e) {
+                console.error("Map initialization failed: ", e);
+                document.getElementById('map-container').innerHTML = "地図の読み込みに失敗しました。";
+            }
+        }
+
+        // 位置情報共有
+        function toggleLocationSharing() {
+            const button = document.getElementById('toggle-location-share-button');
+            const statusEl = document.getElementById('location-status');
+
+            if (locationWatcherId) {
+                // 共有を停止
+                navigator.geolocation.clearWatch(locationWatcherId);
+                locationWatcherId = null;
+                button.textContent = "位置情報共有をONにする";
+                button.classList.remove('bg-red-500', 'hover:bg-red-600');
+                button.classList.add('bg-green-500', 'hover:bg-green-600');
+                statusEl.textContent = "現在のステータス: OFF";
+                // TODO: Firestoreから自分の位置情報を削除
+
+            } else {
+                // 共有を開始
+                if (!navigator.geolocation) {
+                    showCustomModal("エラー", "お使いのブラウザは位置情報取得に対応していません。");
+                    return;
+                }
+
+                locationWatcherId = navigator.geolocation.watchPosition(async (position) => {
+                    // 位置情報が更新されるたびにFirestoreに書き込む
+                    const loc = {
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude
+                    };
+                    try {
+                        const locationDocRef = doc(db, getPublicCollectionPath('userLocations'), userId);
+                        await setDoc(locationDocRef, {
+                            userId: userId,
+                            userEmail: userEmail,
+                            location: loc,
+                            timestamp: serverTimestamp()
+                        });
+                        statusEl.textContent = `現在のステータス: ON (最終更新: ${new Date().toLocaleTimeString()})`;
+                    } catch (e) {
+                        console.error("Failed to update location: ", e);
+                    }
+
+                }, (error) => {
+                    console.error("Geolocation watch error: ", error);
+                    showCustomModal("エラー", `位置情報の継続的な取得に失敗しました: ${error.message}`);
+                    toggleLocationSharing(); // エラーが出たら停止
+                }, { enableHighAccuracy: true });
+
+                button.textContent = "位置情報共有をOFFにする";
+                button.classList.remove('bg-green-500', 'hover:bg-green-600');
+                button.classList.add('bg-red-500', 'hover:bg-red-600');
+                statusEl.textContent = "現在のステータス: ON (位置情報取得待機中...)";
+            }
+        }
+
+        // QRコード生成
+        function initQrCodeGenerator(userIdToEncode) {
+            const displayEl = document.getElementById('qr-code-display');
+            displayEl.innerHTML = ''; // 既存のQRコードをクリア
+
+            if (!userIdToEncode) {
+                displayEl.innerHTML = '<p class="text-gray-500">ログインするとQRコードが生成されます</p>';
+                return;
+            }
+
+            try {
+                 if (qrCodeGenerator) {
+                    qrCodeGenerator.clear(); // 既存のものをクリア
+                    qrCodeGenerator.makeCode(userIdToEncode); // 新しいコードを作成
+                } else {
+                    qrCodeGenerator = new QRCode(displayEl, {
+                        text: userIdToEncode,
+                        width: 192, // w-48
+                        height: 192, // h-48
+                        colorDark : "#000000",
+                        colorLight : "#ffffff",
+                        correctLevel : QRCode.CorrectLevel.H
+                    });
+                }
+            } catch (e) {
+                console.error("QR Code generation failed: ", e);
+                displayEl.innerHTML = '<p class="text-red-500">QRコードの生成に失敗しました</p>';
+            }
+        }
+
+        // QRコードスキャン開始
+        function startQrScanner() {
+            const scannerContainer = document.getElementById('qr-scanner-container');
+            const startButton = document.getElementById('start-qr-scan-button');
+            const stopButton = document.getElementById('stop-qr-scan-button');
+
+            scannerContainer.style.display = 'block';
+            startButton.style.display = 'none';
+            stopButton.style.display = 'inline-block';
+
+            // スキャナを初期化
+            if (!qrCodeScanner) {
+                qrCodeScanner = new Html5Qrcode("qr-scanner-container");
+            }
+
+            qrCodeScanner.start(
+                { facingMode: "environment" }, // 背面カメラを使用
+                {
+                    fps: 10, // 1秒あたり10フレーム
+                    qrbox: { width: 250, height: 250 } // スキャンボックスのサイズ
+                },
+                (decodedText, decodedResult) => {
+                    // スキャン成功時のコールバック
+                    console.log(`QR Code scanned: ${decodedText}`);
+                    stopQrScanner();
+                    handleQrScanResult(decodedText);
+                },
+                (errorMessage) => {
+                    // スキャン失敗時（通常は無視してOK）
+                    // console.warn(`QR Code scan error: ${errorMessage}`);
+                }
+            ).catch((err) => {
+                console.error("Failed to start QR scanner: ", err);
+                showCustomModal("スキャンエラー", `カメラの起動に失敗しました: ${err}`);
+                stopQrScanner();
+            });
+        }
+
+        // QRコードスキャン停止
+        function stopQrScanner() {
+            const scannerContainer = document.getElementById('qr-scanner-container');
+            const startButton = document.getElementById('start-qr-scan-button');
+            const stopButton = document.getElementById('stop-qr-scan-button');
+
+            if (qrCodeScanner && qrCodeScanner.isScanning) {
+                qrCodeScanner.stop().then(() => {
+                    console.log("QR Scanner stopped.");
+                }).catch((err) => {
+                    console.error("Failed to stop QR scanner: ", err);
+                });
+            }
+
+            scannerContainer.style.display = 'none';
+            scannerContainer.innerHTML = ''; // スキャナUIをクリア
+            startButton.style.display = 'block';
+            stopButton.style.display = 'none';
+
+            // スキャナインスタンスを再作成できるようにnull化
+            qrCodeScanner = null;
+        }
+
+        // QRスキャン結果の処理
+        async function handleQrScanResult(scannedData) {
+            // TODO: スキャンしたデータが「グループID」なのか「ユーザーID」なのかを判定するロジック
+            // ここでは簡易的に「グループID」として扱い、参加を試みる
+            showLoading("グループ情報を確認中...");
+            try {
+                const groupRef = doc(db, getPublicCollectionPath('groups'), scannedData);
+                const groupSnap = await getDoc(groupRef);
+
+                if (groupSnap.exists()) {
+                    // グループが存在する -> 参加処理
+                    await updateDoc(groupRef, {
+                        members: arrayUnion(userId) // メンバー配列に自分を追加
+                    });
+                    hideLoading();
+                    showCustomModal("成功", `グループ「${groupSnap.data().name}」に参加しました。`);
+                    showScreen('group-management-screen', 'グループ管理');
+                } else {
+                    hideLoading();
+                    showCustomModal("エラー", "読み取ったQRコードは有効なグループIDではありません。");
+                }
+            } catch (e) {
+                hideLoading();
+                console.error("QR scan processing error: ", e);
+                showCustomModal("エラー", `処理中にエラーが発生しました: ${e.message}`);
+            }
+        }
+
+        // グループ作成
+        async function handleCreateGroup(e) {
+            e.preventDefault();
+            const groupName = document.getElementById('create-group-name').value.trim();
+            if (!groupName) {
+                showCustomModal("エラー", "グループ名を入力してください。");
+                return;
+            }
+            if (!userId) {
+                showCustomModal("認証エラー", "ログインが必要です。");
+                return;
+            }
+
+            showLoading("グループを作成中...");
+            try {
+                const groupCollectionRef = collection(db, getPublicCollectionPath('groups'));
+                await addDoc(groupCollectionRef, {
+                    name: groupName,
+                    creatorId: userId,
+                    members: [userId], // 作成者を最初のメンバーとして追加
+                    createdAt: serverTimestamp()
+                });
+                hideLoading();
+                showCustomModal("成功", `グループ「${groupName}」を作成しました。`);
+                e.target.reset(); // フォームをリセット
+            } catch(e) {
+                hideLoading();
+                console.error("Group creation error: ", e);
+                showCustomModal("エラー", `作成に失敗しました: ${e.message}`);
+            }
+        }
+
+        // 避難所登録機能 (NEW)
+        async function handleRegisterShelter(e) {
+            e.preventDefault();
+            const shelterName = document.getElementById('shelter-name').value.trim();
+            const shelterCapacity = parseInt(document.getElementById('shelter-capacity').value, 10);
+
+            if (!shelterName || !shelterCapacity || shelterCapacity < 1) {
+                showCustomModal("入力エラー", "避難所名と有効なキャパシティを入力してください。");
+                return;
+            }
+
+            showLoading("避難所を登録中...");
+            try {
+                const sheltersRef = collection(db, getPublicCollectionPath('evacuationSpots'));
+                await addDoc(sheltersRef, {
+                    name: shelterName,
+                    capacity: shelterCapacity,
+                    currentOccupancy: 0, // 初期占有率は0
+                    createdAt: serverTimestamp()
+                });
+                hideLoading();
+                showCustomModal("登録完了", `避難所「${shelterName}」を登録しました。`);
+                e.target.reset();
+            } catch (e) {
+                hideLoading();
+                console.error("Shelter registration error: ", e);
+                showCustomModal("エラー", `登録に失敗しました: ${e.message}`);
+            }
+        }
+
+        // チャットメッセージの読み込み
+        function loadChatMessages(e) {
+            const groupId = e.target.value;
+            const messageContainer = document.getElementById('chat-messages-container');
+            const messageInput = document.getElementById('chat-message-input');
+            const sendButton = document.querySelector('#chat-send-form button');
+
+            // 既存のリスナーがあればデタッチ
+            if (chatListener) {
+                chatListener(); // 以前のリスナーを停止
+                chatListener = null;
+            }
+
+            messageContainer.innerHTML = '';
+
+            if (!groupId) {
+                messageContainer.innerHTML = '<p class="text-gray-500 text-center">グループを選択してください</p>';
+                messageInput.disabled = true;
+                sendButton.disabled = true;
+                return;
+            }
+
+            messageInput.disabled = false;
+            sendButton.disabled = false;
+            messageContainer.innerHTML = '<p class="text-gray-500 text-center">メッセージを読み込み中...</p>';
+
+            // 新しいグループのチャットメッセージを監視
+            const messagesQuery = query(collection(db, getPublicCollectionPath('groupChats'), groupId, 'messages'));
+
+            chatListener = onSnapshot(messagesQuery, (snapshot) => {
+                messageContainer.innerHTML = '';
+                if (snapshot.empty) {
+                    messageContainer.innerHTML = '<p class="text-gray-500 text-center">まだメッセージはありません。</p>';
+                    return;
+                }
+
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    const isMe = data.userId === userId;
+
+                    const senderName = data.userEmail || data.userId.substring(0, 6);
+
+                    // メッセージのHTMLを作成
+                    const messageWrapper = document.createElement('div');
+                    messageWrapper.className = `text-sm mb-2 ${isMe ? 'text-right' : 'text-left'}`;
+
+                    const messageBubble = document.createElement('div');
+                    messageBubble.className = `p-3 rounded-t-xl inline-block max-w-xs ${isMe ? 'bg-blue-600 text-white rounded-bl-xl' : 'bg-gray-200 text-gray-800 rounded-br-xl'}`;
+
+                    messageBubble.innerHTML = `
+                        ${!isMe ? `<strong class="block text-blue-800">${senderName}</strong>` : ''}
+                        ${data.text}
+                    `;
+
+                    messageWrapper.appendChild(messageBubble);
+                    messageContainer.appendChild(messageWrapper);
+                });
+
+                // スクロールを一番下に
+                messageContainer.scrollTop = messageContainer.scrollHeight;
+            });
+        }
+
+        // チャットメッセージ送信
+        async function handleSendChatMessage(e) {
+            e.preventDefault();
+            const groupId = document.getElementById('chat-group-select').value;
+            const messageInput = document.getElementById('chat-message-input');
+            const messageText = messageInput.value.trim();
+
+            if (!groupId || !messageText) {
+                return; // グループ未選択またはメッセージ空
+            }
+            if (!userId) {
+                showCustomModal("エラー", "送信するにはログインが必要です。");
+                return;
+            }
+
+            try {
+                // メッセージを無効化して連打防止
+                messageInput.disabled = true;
+
+                const messagesCollectionRef = collection(db, getPublicCollectionPath('groupChats'), groupId, 'messages');
+                await addDoc(messagesCollectionRef, {
+                    text: messageText,
+                    userId: userId,
+                    userEmail: userEmail,
+                    timestamp: serverTimestamp()
+                });
+
+                // 送信完了
+                messageInput.value = ''; // 入力をクリア
+
+            } catch (e) {
+                console.error("Message send error: ", e);
+                showCustomModal("送信エラー", `メッセージの送信に失敗しました: ${e.message}`);
+            } finally {
+                // 入力を再度有効化
+                messageInput.disabled = false;
+                messageInput.focus();
+            }
+        }
+
+    </script>
+</body>
+</html>
